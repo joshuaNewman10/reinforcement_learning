@@ -18,8 +18,8 @@ class CartpoleAgent(Agent):
 
         self.weights = weights
 
-    def get_action(self, observation):
-        weighted_observation = np.matmul(self.weights, observation)
+    def get_action(self, action, current_observation, previous_observation, reward, done, info):
+        weighted_observation = np.matmul(self.weights, current_bservation)
 
         if weighted_observation < 0:
             action = 0
@@ -39,7 +39,7 @@ def run_experiments():
     for num_experiment in range(num_experiments):
         num_iterations = 50000
         agent = CartpoleAgent()
-        runner = Runner(env_name, num_iterations=num_iterations, agent=agent, max_reward=200)
+        runner = Runner(env_name, max_steps=num_iterations, agent=agent, max_reward=200)
         reward, num_steps = runner.run()
         results.append({'score': reward, 'num_iterations': num_experiment, 'weights': agent.weights})
 

@@ -1,6 +1,6 @@
 import logging
-
 import numpy as np
+import os
 
 from ml.runner.base import Runner
 from ml.agent.base import Agent
@@ -22,9 +22,9 @@ class HillClimbingAgent(Agent):
         self.noise_scaling = noise_scaling
         self.weights = weights
 
-    def get_action(self, observation):
+    def get_action(self, action, current_observation, previous_observation, reward, done, info):
         self.weights = self.weights + (np.random.rand(4) * 2 - 1) * self.noise_scaling
-        weighted_observation = np.matmul(self.weights, observation)
+        weighted_observation = np.matmul(self.weights, current_observation)
 
         if weighted_observation < 0:
             action = 0
@@ -40,13 +40,14 @@ def run_experiments():
     best_reward = 0
     best_weights = np.random.rand(4) * 2 - 1
     env_name = 'CartPole-v0'
+    monitor_dir = os.getenv('GYM_MONITOR_DIR')
     num_experiments = 1000
     num_experiment = 0
 
     for num_experiment in range(num_experiments):
         num_iterations = 200
         agent = HillClimbingAgent(weights=best_weights)
-        runner = Runner(env_name, num_iterations=num_iterations, agent=agent, max_reward=200)
+        runner = Runner(env_name, max_steps=num_iterations, agent=agent, max_reward=200, monitor_dir=monitor_dir)
         reward, num_steps = runner.run()
         weights = agent.weights
 
