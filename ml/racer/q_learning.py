@@ -10,17 +10,18 @@ from keras.optimizers import Adam
 
 from ml.agent.base import Agent
 from ml.runner.atari import AtariRunner
+from ml.provider.action.base import ActionProvider
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
 class QLearningAgent(Agent):
-    def __init__(self, actions=None, observation_state_size=None, action_size=None, batch_size=32, verbose=True):
+    def __init__(self, action_provider, observation_state_size=None, action_size=None, batch_size=32, verbose=True):
         super(QLearningAgent, self).__init__()
 
-        self.actions = actions
         self.observation_shape = observation_state_size
+        self.action_provider = action_provider
         self.action_size = action_size
 
         self._verbose = verbose
@@ -48,13 +49,13 @@ class QLearningAgent(Agent):
         random_decimal = np.random.rand()
 
         if random_decimal <= self.epsilon:
-            action_index = random.randint(0, self.action_size)
+            action_index = 0
         else:
             action_index = self.predict(current_observation)
 
-        action = self._get_action_from_index(action_index)
+        action = self.action_provider.get_action_value_from_index(action_index)
         action_n = [action]
-        print(action_n)
+        logger.warning('Sending action from agent %s', action)
         return action_n
 
     def has_sufficient_training_data(self):
@@ -98,7 +99,9 @@ class QLearningAgent(Agent):
 
     def _predict_future_discounted_reward(self, observation, target, action):
         target_future_discounted_rewards = self.model.predict(x=observation)
-        target_future_discounted_rewards[0][action] = target
+        logger.warning('JJDEBUG ACTION %s', action)
+        action_index = self.action_provider.get_action_index_from_name(action)
+        target_future_discounted_rewards[0][action_index] = target
         return target_future_discounted_rewards
 
     def _update_epsilon(self):
@@ -126,7 +129,7 @@ class QLearningAgent(Agent):
         return model
 
     def _store_env_step(self, action, current_observation, previous_observation, reward, done, info):
-        if action is None:
+        if action is None or reward == 0:
             return
 
         if done:
@@ -146,11 +149,13 @@ class QLearningAgent(Agent):
         )
 
     def _get_action_from_index(self, index):
-        #('KeyEvent', name, down)
+        # ('KeyEvent', name, down)
         #  action_tuple =  ('KeyEvent', self.actions.keys[index].key_name, True)
-        #return action_tuple
-        return  [('KeyEvent', 'ArrowUp', True), ('KeyEvent', 'ArrowRight', False),
-                               ('KeyEvent', 'ArrowLeft', False), ('KeyEvent', 'n', True)]
+        # return action_tuple
+        # return [('KeyEvent', 'ArrowUp', True), ('KeyEvent', 'ArrowRight', False),
+        #        ('KeyEvent', 'ArrowLeft', False), ('KeyEvent', 'n', True)]
+        return [('KeyEvent', 'ArrowUp', True)]
+
     def load(self, file_path):
         self.model.load_weights(file_path)
 
@@ -183,18 +188,37 @@ def compute_avg_num_steps(episode_data):
     return np.mean(num_steps)
 
 
+def get_actions():
+    action_names = ['ArrowUp', 'ArrowLeft', 'ArrowRight']
+    action_values = [
+        [('KeyEvent', 'ArrowUp', True), ('KeyEvent', 'ArrowLeft', False), ('KeyEvent', 'ArrowRight', False)],
+        [('KeyEvent', 'ArrowUp', False), ('KeyEvent', 'ArrowLeft', True), ('KeyEvent', 'ArrowRight', False)],
+        [('KeyEvent', 'ArrowUp', False), ('KeyEvent', 'ArrowLeft', False), ('KeyEvent', 'ArrowRight', True)]
+    ]
+
+    action_indices = [0, 1, 2]
+    return action_names, action_values, action_indices
+
+
 def main():
     env_name = 'flashgames.NeonRace-v0'
-    max_reward = 1000
-    max_steps = 1000
+    max_reward = 5000
+    max_steps = 10000000000
     num_episodes = 1000
 
     episode_data = []
 
-    agent = QLearningAgent()
-    runner = AtariRunner(env_name, agent=agent, max_reward=max_reward, max_steps=max_steps, reset_on_done=False, run_in_docker=True)
+    action_names, action_values, action_indices = get_actions()
+    action_provider = ActionProvider(
+        action_values=action_values,
+        action_names=action_names,
+        action_indices=action_indices
+    )
+    agent = QLearningAgent(action_provider=action_provider)
+    runner = AtariRunner(env_name, agent=agent, max_reward=max_reward, max_steps=max_steps, reset_on_done=False,
+                         run_in_docker=True)
     observation_shape = runner.observation_shape
-    action_size = runner.action_size
+    action_size = len(action_values)
     action_space = runner.action_space
 
     agent.actions = action_space  # see if can get dynamically

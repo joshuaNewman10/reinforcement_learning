@@ -53,7 +53,7 @@ class AtariRunner(Runner):
         observation = self.preprocess_observation(observation)
         self.agent.reset_reward()
 
-        for step in range(self.max_steps):
+        while True:
             self.env.render()
             step_num += 1
 
