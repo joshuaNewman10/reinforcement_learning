@@ -5,7 +5,7 @@ import time
 
 from collections import deque
 from keras.models import Sequential
-from keras.layers import Dense
+from keras.layers import Dense, Flatten, Activation, Conv2D
 from keras.optimizers import Adam
 
 from ml.agent.base import Agent
@@ -27,7 +27,7 @@ class QLearningAgent(Agent):
         self._verbose = verbose
 
         self.batch_size = batch_size
-        self.env_step_history = deque(maxlen=2000)
+        self.env_step_history = deque(maxlen=10000)
         self.gamma = 0.95  # discount rate
         self.epsilon = 1.0  # exploration rate
         self.epsilon_min = 0.01
@@ -65,6 +65,7 @@ class QLearningAgent(Agent):
         observation = self.format_observation(observation)
 
         predictions = self.model.predict(x=observation)
+        logger.warning("DEBUG PREDICTIONS %s", predictions)
         prediction = predictions[0]
         return np.argmax(prediction)
 
@@ -92,21 +93,33 @@ class QLearningAgent(Agent):
             if not done:
                 target = (reward + self.gamma *
                           np.amax(self.model.predict(next_observation)[0]))
-
             future_discounted_reward = self._predict_future_discounted_reward(observation, target, action)
-            self.model.fit(observation, future_discounted_reward, epochs=1, verbose=0)
+            logger.warning('Training with future rewrd %s', future_discounted_reward)
+            self.model.fit(observation, future_discounted_reward, epochs=1, verbose=1)
         self._update_epsilon()
 
     def _predict_future_discounted_reward(self, observation, target, action):
         target_future_discounted_rewards = self.model.predict(x=observation)
-        logger.warning('JJDEBUG ACTION %s', action)
-        action_index = self.action_provider.get_action_index_from_name(action)
+        action_name = self._get_action_name(action)
+        action_index = self.action_provider.get_action_index_from_name(action_name)
+        logger.warning('JJDEBUG ACTION %s Index %s rewards %s', action_name, action_index, target_future_discounted_rewards)
+        #action_space = [0, 0, 0, 0]
         target_future_discounted_rewards[0][action_index] = target
         return target_future_discounted_rewards
 
     def _update_epsilon(self):
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
+
+    def _get_action_name(self, action):
+        set_action = None
+
+        for part in action[0]:
+            part_type, name, set_value = part
+            if set_value == True:
+                set_action = name
+
+        return set_action
 
     def build_model(self):
         observation_shape = self.observation_shape
@@ -115,9 +128,16 @@ class QLearningAgent(Agent):
 
         # Neural Net for Deep-Q learning Model
         model = Sequential()
-        model.add(Dense(24, input_shape=(height, width, channels), activation='relu'))
-        model.add(Dense(24, activation='relu'))
-        model.add(Dense(self.action_size, activation='linear'))
+        model.add(Conv2D(32, 8, 8, subsample=(4, 4), border_mode='same', input_shape=(height, width, channels)))
+        model.add(Activation('relu'))
+        model.add(Conv2D(64, 4, 4, subsample=(2, 2), border_mode='same'))
+        model.add(Activation('relu'))
+        model.add(Conv2D(64, 3, 3, subsample=(1, 1), border_mode='same'))
+        model.add(Activation('relu'))
+        model.add(Flatten())
+        model.add(Dense(512))
+        model.add(Activation('relu'))
+        model.add(Dense(3))
         model.compile(
             loss='mse',
             optimizer=Adam(lr=self.learning_rate)
@@ -138,23 +158,18 @@ class QLearningAgent(Agent):
         current_observation = self.format_observation(current_observation)
         previous_observation = self.format_observation(previous_observation)
 
+        logger.warning('Appending action %s reward %s done %s info %s', action, reward, done, info)
+
         self.env_step_history.append(
             {
                 'observation': previous_observation,
                 'action': action,
                 'reward': reward,
                 'next_observation': current_observation,
-                'done': done
+                'done': done,
+                'info': info
             }
         )
-
-    def _get_action_from_index(self, index):
-        # ('KeyEvent', name, down)
-        #  action_tuple =  ('KeyEvent', self.actions.keys[index].key_name, True)
-        # return action_tuple
-        # return [('KeyEvent', 'ArrowUp', True), ('KeyEvent', 'ArrowRight', False),
-        #        ('KeyEvent', 'ArrowLeft', False), ('KeyEvent', 'n', True)]
-        return [('KeyEvent', 'ArrowUp', True)]
 
     def load(self, file_path):
         self.model.load_weights(file_path)
