@@ -1,3 +1,6 @@
+import random
+
+
 class ActionProvider:
     def __init__(self, action_indices, action_names, action_values):
         self._action_indices = action_indices
@@ -15,6 +18,9 @@ class ActionProvider:
             mapping[a] = b
 
         return mapping
+
+    def get_random_action_index(self):
+        return random.choice(self._action_indices)
 
     def get_action_value_from_index(self, index):
         return self._index_value_map[index]

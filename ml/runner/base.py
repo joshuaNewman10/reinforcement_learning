@@ -1,9 +1,11 @@
+import os
 import logging
 
 import gym
 import universe
 
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=os.getenv('LOG_LEVEL', logging.WARNING))
+logger = logging.getLogger(__name__)
 
 
 class Runner:
@@ -37,9 +39,6 @@ class Runner:
 
         return False
 
-    def preprocess_observation(self, observation):
-        return observation
-
     def run(self):
         action = None
         info = None
@@ -53,36 +52,7 @@ class Runner:
         observation = self.preprocess_observation(observation)
         self.agent.reset_reward()
 
-        for step in range(self.max_steps):
-            self.env.render()
-            step_num += 1
-
-            action = self.agent.get_action(
-                action=action,
-                previous_observation=previous_observation,
-                current_observation=observation,
-                reward=reward,
-                done=done,
-                info=info
-            )
-
-            previous_observation = observation
-            observation, reward, done, info = self.env.step(action)
-            observation = self.preprocess_observation(observation)
-            self.agent.update_reward(reward, done)
-
-            if self.max_reward_reached():
-                break
-
-            if done and self.reset_on_done:
-                observation = self.env.reset()
-                self.agent.reset_reward()
-                step_num = 0
-
-            elif done and not self.reset_on_done:
-                break
-
-        self.agent.get_action(
+        action = self.agent.get_action(
             action=action,
             previous_observation=previous_observation,
             current_observation=observation,
@@ -91,4 +61,54 @@ class Runner:
             info=info
         )
 
+        while True:
+            step_num += 1
+            logger.warning('Step %s', step_num)
+
+            self.env.render()
+            previous_observation = observation
+
+            observation, reward, done, info = self.env.step(action)
+            observation = self.preprocess_observation(observation)
+            reward = self.preprocess_reward(reward)
+            info = self.preprocess_info(info)
+            done = self.preprocess_done(done, info)
+
+            self.agent.update_reward(reward, done)
+
+            self.agent.get_action(
+                action=action,
+                previous_observation=previous_observation,
+                current_observation=observation,
+                reward=reward,
+                done=done,
+                info=info
+            )
+
+            if self.max_reward_reached():
+                break
+
+            if done and not self.reset_on_done:
+                break
+
+            elif done and self.reset_on_done:
+                observation = self.env.reset()
+                self.agent.reset()
+                step_num = 0
+
         return self.agent.total_reward, step_num
+
+    def preprocess_info(self, info):
+        return info
+
+    def preprocess_observation(self, observation):
+        return observation
+
+    def preprocess_action(self, action):
+        return action
+
+    def preprocess_reward(self, reward):
+        return reward
+
+    def preprocess_done(self, done, info):
+        return done

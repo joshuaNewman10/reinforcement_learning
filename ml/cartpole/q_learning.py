@@ -16,11 +16,11 @@ logger = logging.getLogger(__name__)
 
 
 class QLearningAgent(Agent):
-    def __init__(self, actions=None, observation_state_size=None, action_size=None, batch_size=32, verbose=True):
+    def __init__(self, actions=None, observation_state_shape=None, action_size=None, batch_size=32, verbose=True):
         super(QLearningAgent, self).__init__()
 
         self.actions = actions
-        self.observation_state_size = observation_state_size
+        self.observation_shape = observation_state_shape
         self.action_size = action_size
 
         self._verbose = verbose
@@ -65,7 +65,7 @@ class QLearningAgent(Agent):
         return np.argmax(prediction)
 
     def format_observation(self, observation):
-        return np.reshape(observation, [1, self.observation_state_size])
+        return np.reshape(observation, [1, self.observation_shape])
 
     def train(self):
         env_state_mini_batch = random.sample(self.env_step_history, k=self.batch_size)
@@ -98,7 +98,7 @@ class QLearningAgent(Agent):
     def build_model(self):
         # Neural Net for Deep-Q learning Model
         model = Sequential()
-        model.add(Dense(24, input_dim=self.observation_state_size, activation='relu'))
+        model.add(Dense(24, input_dim=self.observation_shape, activation='relu'))
         model.add(Dense(24, activation='relu'))
         model.add(Dense(self.action_size, activation='linear'))
         model.compile(
@@ -173,13 +173,14 @@ def main():
 
     agent = QLearningAgent()
     runner = Runner(env_name, agent=agent, max_reward=max_reward, max_steps=max_steps, reset_on_done=False)
-    state_size = runner.observation_shape
+    observation_shape = runner.observation_shape #tuple of shape (4,)
+    observation_shape = observation_shape[0]
     action_size = runner.action_size
     action_space = runner.action_space
 
     agent.actions = action_space  # see if can get dynamically
     agent.action_size = action_size
-    agent.observation_state_size = state_size
+    agent.observation_shape = observation_shape
 
     model = agent.build_model()
     agent.model = model

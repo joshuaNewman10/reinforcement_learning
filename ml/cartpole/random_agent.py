@@ -19,11 +19,10 @@ class CartpoleAgent(Agent):
         self.weights = weights
 
     def get_action(self, action, current_observation, previous_observation, reward, done, info):
-        weighted_observation = np.matmul(self.weights, current_bservation)
+        weighted_observation = np.matmul(self.weights, current_observation)
 
         if weighted_observation < 0:
             action = 0
-
         else:
             action = 1
 

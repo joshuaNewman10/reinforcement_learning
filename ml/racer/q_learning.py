@@ -1,10 +1,11 @@
+import os
 import logging
 import random
 import numpy as np
 import time
 
 from collections import deque
-from keras.models import Sequential
+from keras.models import Sequential, load_model
 from keras.layers import Dense, Flatten, Activation, Conv2D
 from keras.optimizers import Adam
 
@@ -49,13 +50,14 @@ class QLearningAgent(Agent):
         random_decimal = np.random.rand()
 
         if random_decimal <= self.epsilon:
-            action_index = 0
+            action_index = self.action_provider.get_random_action_index()
         else:
             action_index = self.predict(current_observation)
+            action = self.action_provider.get_action_value_from_index(action_index)
+            logger.warning('Sending predicted action from agent %s', action)
 
         action = self.action_provider.get_action_value_from_index(action_index)
         action_n = [action]
-        logger.warning('Sending action from agent %s', action)
         return action_n
 
     def has_sufficient_training_data(self):
@@ -80,10 +82,17 @@ class QLearningAgent(Agent):
         return np.reshape(observation, [num_samples, height, width, channels])
 
     def train(self):
+        X = []
+        y = []
         env_state_mini_batch = random.sample(self.env_step_history, k=self.batch_size)
 
         for env_state in env_state_mini_batch:
             observation = env_state['observation']
+            #num_samples = 1
+            #observation_shape = observation.shape
+            #height, width = observation_shape
+            #channels = 1
+
             action = env_state['action']
             reward = env_state['reward']
             next_observation = env_state['next_observation']
@@ -94,16 +103,23 @@ class QLearningAgent(Agent):
                 target = (reward + self.gamma *
                           np.amax(self.model.predict(next_observation)[0]))
             future_discounted_reward = self._predict_future_discounted_reward(observation, target, action)
-            logger.warning('Training with future rewrd %s', future_discounted_reward)
-            self.model.fit(observation, future_discounted_reward, epochs=1, verbose=1)
+            #self.model.fit(observation, future_discounted_reward, epochs=1, verbose=1)
+            X.append(observation)
+            y.append(future_discounted_reward)
+
+            logger.warning('Training with future reward %s', future_discounted_reward)
+        #X = np.reshape(X, [len(X), num_samples, height, width, channels])
+        #y = np.reshape(y, [len(y), 3])
+        self.model.fit(X, y, epochs=1, verbose=1)
         self._update_epsilon()
 
     def _predict_future_discounted_reward(self, observation, target, action):
         target_future_discounted_rewards = self.model.predict(x=observation)
         action_name = self._get_action_name(action)
         action_index = self.action_provider.get_action_index_from_name(action_name)
-        logger.warning('JJDEBUG ACTION %s Index %s rewards %s', action_name, action_index, target_future_discounted_rewards)
-        #action_space = [0, 0, 0, 0]
+        logger.warning('JJDEBUG ACTION %s Index %s rewards %s', action_name, action_index,
+                       target_future_discounted_rewards)
+        # action_space = [0, 0, 0, 0]
         target_future_discounted_rewards[0][action_index] = target
         return target_future_discounted_rewards
 
@@ -172,10 +188,11 @@ class QLearningAgent(Agent):
         )
 
     def load(self, file_path):
-        self.model.load_weights(file_path)
+        self.model = load_model(file_path)
 
     def save(self, file_path):
-        self.model.save_weights(file_path)
+        logger.info('Saving model to file %s', file_path)
+        self.model.save(file_path)
 
 
 def run_episode(runner, episode_num, verbose=False):
@@ -204,22 +221,24 @@ def compute_avg_num_steps(episode_data):
 
 
 def get_actions():
-    action_names = ['ArrowUp', 'ArrowLeft', 'ArrowRight']
+    action_names = ['ArrowUp', 'ArrowLeft', 'ArrowRight', 'n']
     action_values = [
-        [('KeyEvent', 'ArrowUp', True), ('KeyEvent', 'ArrowLeft', False), ('KeyEvent', 'ArrowRight', False)],
-        [('KeyEvent', 'ArrowUp', False), ('KeyEvent', 'ArrowLeft', True), ('KeyEvent', 'ArrowRight', False)],
-        [('KeyEvent', 'ArrowUp', False), ('KeyEvent', 'ArrowLeft', False), ('KeyEvent', 'ArrowRight', True)]
+        [('KeyEvent', 'ArrowUp', True), ('KeyEvent', 'ArrowLeft', False), ('KeyEvent', 'ArrowRight', False), ('KeyEvent', 'n', False)],
+        [('KeyEvent', 'ArrowUp', False), ('KeyEvent', 'ArrowLeft', True), ('KeyEvent', 'ArrowRight', False), ('KeyEvent', 'n', False)],
+        [('KeyEvent', 'ArrowUp', False), ('KeyEvent', 'ArrowLeft', False), ('KeyEvent', 'ArrowRight', True), ('KeyEvent', 'n', False) ],
+        [('KeyEvent', 'ArrowUp', False), ('KeyEvent', 'ArrowLeft', False), ('KeyEvent', 'ArrowRight', False), ('KeyEvent', 'n', True) ]
     ]
 
-    action_indices = [0, 1, 2]
+    action_indices = [i for i in range(len(action_names))]
     return action_names, action_values, action_indices
 
 
 def main():
     env_name = 'flashgames.NeonRace-v0'
-    max_reward = 5000
-    max_steps = 10000000000
+    max_reward = None
+    max_steps = 500
     num_episodes = 1000
+    model_file_path = os.environ['MODEL_FILE_PATH']
 
     episode_data = []
 
@@ -230,8 +249,16 @@ def main():
         action_indices=action_indices
     )
     agent = QLearningAgent(action_provider=action_provider)
-    runner = AtariRunner(env_name, agent=agent, max_reward=max_reward, max_steps=max_steps, reset_on_done=False,
-                         run_in_docker=True)
+
+    runner = AtariRunner(
+        env_name,
+        agent=agent,
+        max_reward=max_reward,
+        max_steps=max_steps,
+        reset_on_done=False,
+        run_in_docker=True
+    )
+
     observation_shape = runner.observation_shape
     action_size = len(action_values)
     action_space = runner.action_space
@@ -244,8 +271,11 @@ def main():
     agent.model = model
 
     for episode_num in range(num_episodes):
+        runner = AtariRunner(env_name, agent=agent, max_reward=max_reward, max_steps=max_steps, reset_on_done=False, run_in_docker=True)
+
         reward, num_steps = run_episode(runner, episode_num)
         episode_data.append(dict(reward=reward, num_steps=num_steps))
+
         logger.warning('Episode %s Score %s Steps %s epis %s', episode_num, reward, num_steps, agent.epsilon)
         if agent.has_sufficient_training_data():
             agent.train()
@@ -253,6 +283,7 @@ def main():
     avg_reward = compute_avg_reward(episode_data)
     avg_num_steps = compute_avg_num_steps(episode_data)
     logger.warning('Avg Reward %s Avg Num Steps %s', avg_reward, avg_num_steps)
+    agent.save(model_file_path)
 
 
 if __name__ == '__main__':

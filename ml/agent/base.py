@@ -12,5 +12,8 @@ class Agent:
     def update_reward(self, reward, done):
         self.total_reward += reward
 
+    def reset(self):
+        self.reset_reward()
+
     def reset_reward(self):
         self.total_reward = 0

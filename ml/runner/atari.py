@@ -1,17 +1,20 @@
+import os
+import logging
 import numpy as np
 
 from ml.runner.base import Runner
 from ml.util.image import convert_image_to_greyscale, downsample_image
 
+logging.basicConfig(level=os.getenv('LOG_LEVEL', logging.DEBUG))
+logger = logging.getLogger(__name__)
 
 
 class AtariRunner(Runner):
     downsample_rate = 0.2
-
     def __init__(self, env_name, max_steps, agent, max_reward=None, run_in_docker=False, reset_on_done=False,
                  monitor_dir=None):
-        super(AtariRunner, self).__init__(env_name, max_steps, agent, max_reward, reset_on_done, monitor_dir)
 
+        super(AtariRunner, self).__init__(env_name, max_steps, agent, max_reward, reset_on_done, monitor_dir)
         self.black_screen = np.zeros(shape=(self.observation_shape))
 
         if run_in_docker:
@@ -29,74 +32,26 @@ class AtariRunner(Runner):
         return len(self.env.action_space.keys)
 
     def preprocess_observation(self, observation):
+        observation = observation[0]
+
         if observation is None or not any(observation):
             screen_image = self.black_screen
             return screen_image
         else:
             screen_image = observation['vision']
             image = screen_image
-            screen_image = downsample_image(image, scale=self.downsample_rate)
+            #screen_image = downsample_image(image, scale=self.downsample_rate)
             screen_image = convert_image_to_greyscale(screen_image)
             return screen_image
 
-    def run(self):
-        action = None
-        info = None
-        previous_observation = None
+    def preprocess_action(self, action):
+        return action[0]
 
-        done = False
-        reward = 0
-        step_num = 0
+    def preprocess_reward(self, reward):
+        return reward[0]
 
-        observation_n = self.env.reset()
-        observation = observation_n[0]
-        observation = self.preprocess_observation(observation)
-        self.agent.reset_reward()
-
-        while True:
-            self.env.render()
-            step_num += 1
-
-            action = self.agent.get_action(
-                action=action,
-                previous_observation=previous_observation,
-                current_observation=observation,
-                reward=reward,
-                done=done,
-                info=info
-            )
-
-            previous_observation = observation
-            observation_n, reward_n, done_n, info = self.env.step(action)
-            observation = observation[0]
-            reward = reward_n[0]
-            done = done_n[0]
-
-            observation = self.preprocess_observation(observation)
-            self.agent.update_reward(reward, done)
-
-            if self.max_reward_reached():
-                break
-
-            if done and self.reset_on_done:
-                observation = self.env.reset()
-                self.agent.reset_reward()
-                step_num = 0
-
-            elif done and not self.reset_on_done:
-                break
-
-        self.agent.get_action(
-            action=action,
-            previous_observation=previous_observation,
-            current_observation=observation,
-            reward=reward,
-            done=done,
-            info=info
-        )
-
-        return self.agent.total_reward, step_num
-
+    def preprocess_done(self, done, info):
+        return done[0]
 
     def _downsample_observation_shape(self, observation_state_shape):
         downsampled_shape = [int(dimension * self.downsample_rate) for dimension in observation_state_shape]
