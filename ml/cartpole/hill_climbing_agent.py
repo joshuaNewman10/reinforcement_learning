@@ -1,9 +1,10 @@
 import logging
-import numpy as np
 import os
 
-from ml.runner.base import Runner
+import numpy as np
+
 from ml.agent.base import Agent
+from ml.runner.env.base import Runner
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)

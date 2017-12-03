@@ -2,8 +2,9 @@ from abc import abstractmethod
 
 
 class Agent:
-    def __init__(self):
+    def __init__(self, is_trainable=False):
         self.total_reward = 0
+        self.is_trainable = is_trainable
 
     @abstractmethod
     def get_action(self, action, current_observation, previous_observation, reward, done, info):

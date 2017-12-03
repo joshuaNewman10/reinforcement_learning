@@ -1,15 +1,15 @@
 import logging
 import random
-import numpy as np
 import time
-
 from collections import deque
-from keras.models import Sequential
+
+import numpy as np
 from keras.layers import Dense
+from keras.models import Sequential
 from keras.optimizers import Adam
 
 from ml.agent.base import Agent
-from ml.runner.base import Runner
+from ml.runner.env.base import Runner
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -84,6 +84,7 @@ class QLearningAgent(Agent):
 
             future_discounted_reward = self._predict_future_discounted_reward(observation, target, action)
             self.model.fit(observation, future_discounted_reward, epochs=1, verbose=0)
+
         self._update_epsilon()
 
     def _predict_future_discounted_reward(self, observation, target, action):
